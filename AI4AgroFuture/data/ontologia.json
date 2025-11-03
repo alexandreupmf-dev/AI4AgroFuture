@@ -1,0 +1,11 @@
+{
+  "conceitos": [
+    {"nome": "defensivos", "keywords": ["defensivo", "agrotóxico", "herbicida", "fungicida", "inseticida", "biológico"]},
+    {"nome": "soja", "keywords": ["soja", "sojeiro", "sojicultor", "sojicultura"]},
+    {"nome": "mercado", "keywords": ["preço", "tarifa", "exportação", "importação", "câmbio", "demanda", "oferta", "recorde"]},
+    {"nome": "clima", "keywords": ["estiagem", "seca", "chuva", "El Niño", "La Niña", "geada"]},
+    {"nome": "tecnologia", "keywords": ["tecnologia", "digital", "IA", "inteligência artificial", "sensor", "agtech"]},
+    {"nome": "política pública", "keywords": ["lei", "autoriz", "governo", "MAPA", "regulament", "fiscal"]}
+  ]
+}
+

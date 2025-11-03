@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <title>AI4AgroFuture — Dashboard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <!-- D3 para o grafo -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a href="/" class="back">← Voltar</a>
+    <h1>AI4AgroFuture — Dashboard</h1>
+    <button id="btn-refresh" class="btn">Atualizar sinais</button>
+  </header>
+
+  <main class="grid">
+    <!-- Coluna esquerda: sinais recentes com rolagem -->
+    <section class="card">
+      <h2>Sinais fracos recentes</h2>
+      <div class="sinais-list">
+        {% if sinais|length == 0 %}
+          <div class="empty">Nenhum sinal disponível ainda.</div>
+        {% else %}
+          {% for s in sinais %}
+            <article class="sinal">
+              <div class="sinal-titulo">{{ s.titulo }}</div>
+              <div class="sinal-meta">
+                <a class="fonte" href="{{ s.fonte }}" target="_blank" rel="noopener">Fonte</a>
+                {% if s.conceitos %}
+                  <span class="tags">
+                    {% for c in s.conceitos %}<span class="tag">{{ c }}</span>{% endfor %}
+                  </span>
+                {% endif %}
+              </div>
+            </article>
+          {% endfor %}
+        {% endif %}
+      </div>
+    </section>
+
+    <!-- Centro: grafo -->
+    <section class="card">
+      <h2 id="graf-title">Cluster de Cenários Antecipativo</h2>
+      <div id="graf" class="graf"></div>
+    </section>
+
+    <!-- Direita: resumo -->
+    <section class="card">
+      <h2>Resumo</h2>
+      <p>Este painel mostra clusterização semântica (TF-IDF + cosseno) dos <em>títulos reais</em> coletados e um grafo
+        com a hipótese central (≤20 palavras) construída apenas a partir desses títulos.</p>
+      <p>A ontologia (conceitos e palavras-chave) é carregada de <code>data/ontologia.json</code> e usada apenas para
+        taguear e facilitar a leitura — você pode substituir por sua ontologia real.</p>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+  <script>
+    // Desenha o grafo com D3
+    async function desenharGrafo() {
+      const el = document.getElementById('graf');
+      el.innerHTML = '';
+
+      try {
+        const r = await fetch('/api/graph');
+        const data = await r.json();
+
+        document.getElementById('graf-title').textContent = data.titulo || 'Cluster de Cenários Antecipativo';
+
+        const width = el.clientWidth || 700;
+        const height = 520;
+
+        const svg = d3.select('#graf').append('svg')
+          .attr('width', width)
+          .attr('height', height);
+
+        const simulation = d3.forceSimulation(data.nodes)
+          .force('link', d3.forceLink(data.edges).id(d => d.id).distance(d => d.source === 'hipotese' || d.target === 'hipotese' ? 140 : 90).strength(0.4))
+          .force('charge', d3.forceManyBody().strength(-200))
+          .force('center', d3.forceCenter(width / 2, height / 2));
+
+        const link = svg.append('g')
+          .attr('stroke', '#f59e0b')
+          .attr('stroke-width', 3)
+          .selectAll('line')
+          .data(data.edges)
+          .enter()
+          .append('line')
+          .attr('opacity', 0.9);
+
+        const node = svg.append('g')
+          .selectAll('g')
+          .data(data.nodes)
+          .enter()
+          .append('g')
+          .call(d3.drag()
+            .on('start', (event, d) => {
+              if (!event.active) simulation.alphaTarget(0.3).restart();
+              d.fx = d.x; d.fy = d.y;
+            })
+            .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+            .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+          );
+
+        node.append('circle')
+          .attr('r', d => d.tipo === 'hip' ? 70 : 42)
+          .attr('fill', d => d.tipo === 'hip' ? '#1d9bf0' : '#fb923c')
+          .attr('stroke', '#0f172a')
+          .attr('stroke-width', 2)
+          .on('click', (e, d) => {
+            if (d.fonte) window.open(d.fonte, '_blank');
+          });
+
+        node.append('text')
+          .text(d => d.label)
+          .attr('text-anchor', 'middle')
+          .attr('dy', 5)
+          .attr('pointer-events', 'none')
+          .attr('fill', '#0b1020')
+          .attr('font-weight', '700')
+          .attr('font-size', d => d.tipo === 'hip' ? 13 : 11)
+          .each(function(d) { // quebra linhas simples
+            const self = d3.select(this);
+            const words = (d.label || '').split(/\s+/);
+            let line = [], lines = [], max = d.tipo === 'hip' ? 22 : 16;
+            words.forEach(w => {
+              if ((line.join(' ') + ' ' + w).length > max) {
+                lines.push(line.join(' '));
+                line = [w];
+              } else line.push(w);
+            });
+            lines.push(line.join(' '));
+            self.text(null);
+            lines.slice(0, d.tipo === 'hip' ? 4 : 3).forEach((ln, i) => {
+              self.append('tspan').attr('x', 0).attr('dy', i === 0 ? 0 : 14).text(ln);
+            });
+          });
+
+        simulation.on('tick', () => {
+          link
+            .attr('x1', d => d.source.x)
+            .attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x)
+            .attr('y2', d => d.target.y);
+
+          node.attr('transform', d => `translate(${d.x},${d.y})`);
+        });
+      } catch (e) {
+        console.error(e);
+        document.getElementById('graf').innerHTML = '<div class="empty">Não foi possível montar o grafo agora.</div>';
+      }
+    }
+
+    desenharGrafo();
+  </script>
+</body>
+</html>
+
